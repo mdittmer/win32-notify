@@ -9,10 +9,12 @@ category:       System
 synopsis:       A binding to part of the Win32 library for file notification
 description:    A binding to part of the Win32 library for file notification
 build-type:     Simple
-build-depends:  base, Win32, directory, containers >= 0.4.0.0
-ghc-options:    -Wall -fno-warn-incomplete-patterns -fno-warn-unused-imports
-extensions:     ForeignFunctionInterface
+cabal-version:      >= 1.2
 
-exposed-modules:        System.Win32.Notify
-other-modules:          System.Win32.FileNotify
-
+library
+  build-depends:   base, Win32, directory, containers >= 0.4.0.0
+  ghc-options:     -Wall -fno-warn-incomplete-patterns -fno-warn-unused-imports
+  extensions:      ForeignFunctionInterface
+  exposed-modules: System.Win32.Notify
+  other-modules:   System.Win32.FileNotify
+  hs-source-dirs:  src

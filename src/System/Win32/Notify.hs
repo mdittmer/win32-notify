@@ -1,8 +1,10 @@
-module System.Win32.Notify (
-      watchDirectory        -- FilePath -> Bool -> [EventVariety] -> IO [Event]
-    , Event(..)
-    , EventVariety(..)
-
+module System.Win32.Notify
+  ( initWatchManager
+  , killWatchManager
+  , watchDirectory
+  , Event(..)
+  , EventVariety(..)
+  , Handler
     ) where
 
 import Control.Concurrent
@@ -14,20 +16,6 @@ import System.Directory
 import System.Win32.File
 import System.Win32.FileNotify
 import qualified Data.Map as Map
-
-
--- import System.IO.Unsafe (unsafeInterleaveIO)
-
-{-
-addDirWatch :: FilePath -> Bool -> [EventVariety] -> (Event -> IO ()) -> IO ()
-addDirWatch dir wst evs cb = trace "addDirWatch" (forkIO loop) >> trace "addDirWatch: forked" (return ())
-  where loop = do
-            trace "addDirWatch: start loop" $ return ()
-            e <- watchDirectory dir wst evs
-            trace "addDirWatch: watchDirectory returned" $ return ()
-            forkIO $ cb e
-            trace "addDirWatch: callback forked" $ return ()
--}
 
 data EventVariety
     = Modify
@@ -62,18 +50,23 @@ data Event
 
 type Handler = Event -> IO ()
 
-data WatchId = WatchId ThreadId ThreadId
+data WatchId = WatchId ThreadId ThreadId deriving (Eq, Ord)
 type WatchMap = Map WatchId Handler
 data WatchManager = WatchManager (MVar WatchMap)
 
+
 initWatchManager :: IO WatchManager
-initWatchManager = return (newMVar Map.empty :: MVar WatchMap)
+initWatchManager =  do
+  mvarMap <- newMVar Map.empty
+  return (WatchManager mvarMap)
 
 killWatchManager :: WatchManager -> IO ()
-killWatchManager (WatchManager watchMap) = do
-  flip mapM_ (Map.elems watchMap) $ killThreads
+killWatchManager (WatchManager mvarMap) = do
+  watchMap <- readMVar mvarMap
+  flip mapM_ (Map.keys watchMap) $ killThreads
   where
-    killThreads (tid1, tid2) = do
+    killThreads :: WatchId -> IO ()
+    killThreads (WatchId tid1 tid2) = do
       killThread tid1
       killThread tid2
 
@@ -81,30 +74,31 @@ varietiesToFnFlags :: [EventVariety] -> FileNotificationFlag
 varietiesToFnFlags = foldl (.|.) 0 . map evToFnFlag'
     where evToFnFlag' :: EventVariety -> FileNotificationFlag
           evToFnFlag' ev = case ev of
-                            Modify  -> fILE_NOTIFY_CHANGE_LAST_WRITE
-                            Move    -> fILE_NOTIFY_CHANGE_FILE_NAME .|. fILE_NOTIFY_CHANGE_DIR_NAME
-                            Create  -> fILE_NOTIFY_CHANGE_FILE_NAME .|. fILE_NOTIFY_CHANGE_DIR_NAME
-                            Delete  -> fILE_NOTIFY_CHANGE_FILE_NAME .|. fILE_NOTIFY_CHANGE_DIR_NAME
+            Modify  -> fILE_NOTIFY_CHANGE_LAST_WRITE
+            Move    -> fILE_NOTIFY_CHANGE_FILE_NAME .|. fILE_NOTIFY_CHANGE_DIR_NAME
+            Create  -> fILE_NOTIFY_CHANGE_FILE_NAME .|. fILE_NOTIFY_CHANGE_DIR_NAME
+            Delete  -> fILE_NOTIFY_CHANGE_FILE_NAME .|. fILE_NOTIFY_CHANGE_DIR_NAME
 
 -- watchDirectoryOnce :: FilePath -> Bool -> [EventVariety] -> IO
 -- watchDirectoryOnce dir wst evs = do
 --         h <- getWatchHandle dir
 --         readDirectoryChanges h wst (evToFnFlag evs) >>= actsToEvent
 
-watchDirectory :: WatchManager -> FilePath -> Bool -> [EventVariety] -> Handler -> IO ()
-watchDirectory (WatchManager watchMap) dir watchSubTree varieties handler = do
+watchDirectory :: WatchManager -> FilePath -> Bool -> [EventVariety] -> Handler -> IO Handle
+watchDirectory (WatchManager mvarMap) dir watchSubTree varieties handler = do
   watchHandle <- getWatchHandle dir
   chanEvents <- newChan
   tid1 <- forkIO $ dispatcher chanEvents
   tid2 <- forkIO $ osEventsReader watchHandle chanEvents
-  modifyMVar_ watchMap $ \m -> return (Map.insert (tid1, tid2) handler watchMap)
+  modifyMVar_ mvarMap $ \watchMap -> return (Map.insert (WatchId tid1 tid2) handler watchMap)
+  return watchHandle
   where
     dispatcher :: Chan [Event] -> IO ()
     dispatcher chanEvents = do
       events <- readChan chanEvents
       mapM_ maybeHandle events
       dispatcher chanEvents
-    osEventsReader :: handleType -> Chan [Event] -> IO ()
+    osEventsReader :: Handle -> Chan [Event] -> IO ()
     osEventsReader watchHandle chanEvents = do
       event <- (readDirectoryChanges watchHandle watchSubTree (varietiesToFnFlags varieties) >>= actsToEvent)
       writeChan chanEvents [event]
@@ -112,12 +106,6 @@ watchDirectory (WatchManager watchMap) dir watchSubTree varieties handler = do
     maybeHandle :: Handler
     maybeHandle event =
       if not (null ((eventToVarieties event) `intersect` varieties)) then handler event else return ()
-    -- maybeHandle event@(Created  _ _) = handleWhen Create varieties handler event
-    -- maybeHandle event@(Deleted  _ _) = if Delete `elem` varieties then handler event else return ()
-    -- maybeHandle event@(Modified _ _) = if Modify `elem` varieties then handler event else return ()
-    -- maybeHandle event@(Renamed  _ _) = if Move   `elem` varieties then handler event else return ()
-    -- handleWhen :: EventVariety -> [EventVariety] -> Handler -> Event -> IO ()
-    -- handleWhen variety varieties handler event = if variety `elem` varieties then handler event else return ()
 
 eventToVarieties :: Event -> [EventVariety]
 eventToVarieties event = case event of
@@ -125,14 +113,6 @@ eventToVarieties event = case event of
   Deleted  _ _   -> [Delete]
   Modified _ _   -> [Modify]
   Renamed  _ _ _ -> [Move]
-
--- watchDirectory :: FilePath -> Bool -> [EventVariety] -> IO [Event]
--- watchDirectory dir wst evs = do
---         h <- getWatchHandle dir
---         loop h
---     where loop h = do e <- readDirectoryChanges h wst (evToFnFlag evs) >>= actsToEvent
---                       es <- unsafeInterleaveIO $ loop h
---                       return $ e:es
 
 actsToEvent :: [(Action, String)] -> IO Event
 actsToEvent [] = error "The impossible happened - there was no event!"

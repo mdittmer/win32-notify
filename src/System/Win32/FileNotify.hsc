@@ -1,4 +1,9 @@
-module System.Win32.FileNotify where
+module System.Win32.FileNotify
+       ( Handle
+       , Action(..)
+       , getWatchHandle
+       , readDirectoryChanges
+       ) where
 
 import System.Win32.File
 import System.Win32.Types
@@ -11,10 +16,12 @@ import Data.Bits
 
 #include <windows.h>
 
-getWatchHandle :: FilePath -> IO HANDLE
-getWatchHandle dir = 
-    createFile dir 
-        fILE_LIST_DIRECTORY -- Access mode 
+type Handle = HANDLE
+
+getWatchHandle :: FilePath -> IO Handle
+getWatchHandle dir =
+    createFile dir
+        fILE_LIST_DIRECTORY -- Access mode
         (fILE_SHARE_READ .|. fILE_SHARE_WRITE) -- Share mode
         Nothing -- security attributes
         oPEN_EXISTING -- Create mode, we want to look at an existing directory
@@ -22,7 +29,7 @@ getWatchHandle dir =
         Nothing -- No template file
 
 
-readDirectoryChanges :: HANDLE -> Bool -> FileNotificationFlag -> IO [(Action, String)]
+readDirectoryChanges :: Handle -> Bool -> FileNotificationFlag -> IO [(Action, String)]
 readDirectoryChanges h wst mask = do
     let maxBuf = 16384
     allocaBytes maxBuf $ \buffer -> do
@@ -34,7 +41,7 @@ data Action = FileAdded | FileRemoved | FileModified | FileRenamedOld | FileRena
   deriving (Show, Read, Eq, Ord, Enum)
 
 readChanges :: Ptr FILE_NOTIFY_INFORMATION -> IO [(Action, String)]
-readChanges pfni = do 
+readChanges pfni = do
     fni <- peekFNI pfni
     let entry = (faToAction $ fniAction fni, fniFileName fni)
         nioff = fromEnum $ fniNextEntryOffset fni
@@ -66,7 +73,7 @@ type FileAction = DWORD
  }
 
 type WCHAR = Word16
--- This is a bit overkill for now, I'll only use nullFunPtr anyway, 
+-- This is a bit overkill for now, I'll only use nullFunPtr anyway,
 -- but who knows, maybe someday I'll want asynchronous callbacks on the OS level.
 type LPOVERLAPPED_COMPLETION_ROUTINE = FunPtr ((DWORD, DWORD, LPOVERLAPPED) -> IO ())
 
@@ -87,33 +94,33 @@ peekFNI buf = do
     neof <- (#peek FILE_NOTIFY_INFORMATION, NextEntryOffset)        buf
     acti <- (#peek FILE_NOTIFY_INFORMATION, Action)                 buf
     fnle <- (#peek FILE_NOTIFY_INFORMATION, FileNameLength)         buf
-    fnam <- peekCWStringLen 
+    fnam <- peekCWStringLen
                 (buf `plusPtr` (#offset FILE_NOTIFY_INFORMATION, FileName), -- start of array
                 fromEnum (fnle :: DWORD) `div` 2 ) -- fnle is the length in *bytes*, and a WCHAR is 2 bytes
     return $ FILE_NOTIFY_INFORMATION neof acti fnam
 
 
-readDirectoryChangesW :: HANDLE -> Ptr FILE_NOTIFY_INFORMATION -> DWORD -> BOOL -> FileNotificationFlag -> LPDWORD -> IO ()
-readDirectoryChangesW h buf bufSize wst f br = 
+readDirectoryChangesW :: Handle -> Ptr FILE_NOTIFY_INFORMATION -> DWORD -> BOOL -> FileNotificationFlag -> LPDWORD -> IO ()
+readDirectoryChangesW h buf bufSize wst f br =
   failIfFalse_ "ReadDirectoryChangesW" $ c_ReadDirectoryChangesW h (castPtr buf) bufSize wst f br nullPtr nullFunPtr
 
 {-
-asynchReadDirectoryChangesW :: HANDLE -> Ptr FILE_NOTIFY_INFORMATION -> DWORD -> BOOL -> FileNotificationFlag 
+asynchReadDirectoryChangesW :: Handle -> Ptr FILE_NOTIFY_INFORMATION -> DWORD -> BOOL -> FileNotificationFlag
                                 -> LPOVERLAPPED -> IO ()
 asynchReadDirectoryChangesW h buf bufSize wst f over =
   failIfFalse_ "ReadDirectoryChangesW" $ c_ReadDirectoryChangesW h (castPtr buf) bufSize wst f nullPtr over nullFunPtr
 
-cbReadDirectoryChangesW :: HANDLE -> Ptr FILE_NOTIFY_INFORMATION -> DWORD -> BOOL -> FileNotificationFlag 
+cbReadDirectoryChangesW :: Handle -> Ptr FILE_NOTIFY_INFORMATION -> DWORD -> BOOL -> FileNotificationFlag
                                 -> LPOVERLAPPED -> IO BOOL
 cbReadDirectoryChanges
 -}
 foreign import stdcall safe "windows.h ReadDirectoryChangesW"
-  c_ReadDirectoryChangesW :: HANDLE -> LPVOID -> DWORD -> BOOL -> DWORD 
+  c_ReadDirectoryChangesW :: Handle -> LPVOID -> DWORD -> BOOL -> DWORD
                                 -> LPDWORD -> LPOVERLAPPED -> LPOVERLAPPED_COMPLETION_ROUTINE -> IO BOOL
 
 {-
 type CompletionRoutine :: (DWORD, DWORD, LPOVERLAPPED) -> IO ()
-foreign import ccall "wrapper" 
+foreign import ccall "wrapper"
     mkCompletionRoutine :: CompletionRoutine -> IO (FunPtr CompletionRoutine)
 
 type LPOVERLAPPED = Ptr OVERLAPPED
