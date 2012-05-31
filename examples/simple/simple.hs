@@ -13,8 +13,9 @@ main = do
   putStrLn "Listens to your home directory. Hit enter to terminate."
   getLine -- TODO: This hangs... why is that?
   killWatchManager watchManager
+  putStrLn "Quitting."
   where
     isRecursive = False
-    varieties = [Create, Delete, Modify]
+    varieties = [Create, Delete, Modify, Move]
     handler :: Handler
     handler event = putStrLn $ show event

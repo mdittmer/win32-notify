@@ -5,6 +5,8 @@ module System.Win32.Notify
   , Event(..)
   , EventVariety(..)
   , Handler
+  , WatchId(..)
+  , WatchManager(..)
     ) where
 
 import Control.Concurrent
@@ -50,7 +52,7 @@ data Event
 
 type Handler = Event -> IO ()
 
-data WatchId = WatchId ThreadId ThreadId deriving (Eq, Ord)
+data WatchId = WatchId ThreadId ThreadId deriving (Eq, Ord, Show)
 type WatchMap = Map WatchId Handler
 data WatchManager = WatchManager (MVar WatchMap)
 
@@ -84,14 +86,14 @@ varietiesToFnFlags = foldl (.|.) 0 . map evToFnFlag'
 --         h <- getWatchHandle dir
 --         readDirectoryChanges h wst (evToFnFlag evs) >>= actsToEvent
 
-watchDirectory :: WatchManager -> FilePath -> Bool -> [EventVariety] -> Handler -> IO Handle
+watchDirectory :: WatchManager -> FilePath -> Bool -> [EventVariety] -> Handler -> IO WatchId
 watchDirectory (WatchManager mvarMap) dir watchSubTree varieties handler = do
   watchHandle <- getWatchHandle dir
   chanEvents <- newChan
   tid1 <- forkIO $ dispatcher chanEvents
   tid2 <- forkIO $ osEventsReader watchHandle chanEvents
   modifyMVar_ mvarMap $ \watchMap -> return (Map.insert (WatchId tid1 tid2) handler watchMap)
-  return watchHandle
+  return (WatchId tid1 tid2)
   where
     dispatcher :: Chan [Event] -> IO ()
     dispatcher chanEvents = do

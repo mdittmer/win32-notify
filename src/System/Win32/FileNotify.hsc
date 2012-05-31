@@ -1,3 +1,8 @@
+{-# LANGUAGE ForeignFunctionInterface #-}
+#if __GLASGOW_HASKELL__ >= 701
+{-# LANGUAGE InterruptibleFFI #-}
+#endif
+
 module System.Win32.FileNotify
        ( Handle
        , Action(..)
@@ -114,7 +119,13 @@ cbReadDirectoryChangesW :: Handle -> Ptr FILE_NOTIFY_INFORMATION -> DWORD -> BOO
                                 -> LPOVERLAPPED -> IO BOOL
 cbReadDirectoryChanges
 -}
+
+-- The interruptible qualifier will keep threads listening for events from hanging blocking when killed
+#if __GLASGOW_HASKELL__ >= 701
+foreign import stdcall interruptible "windows.h ReadDirectoryChangesW"
+#else
 foreign import stdcall safe "windows.h ReadDirectoryChangesW"
+#endif
   c_ReadDirectoryChangesW :: Handle -> LPVOID -> DWORD -> BOOL -> DWORD
                                 -> LPDWORD -> LPOVERLAPPED -> LPOVERLAPPED_COMPLETION_ROUTINE -> IO BOOL
 
