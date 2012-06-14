@@ -8,6 +8,8 @@ module System.Win32.FileNotify
        , Action(..)
        , getWatchHandle
        , readDirectoryChanges
+       , OSVersion
+       , osVersion
        ) where
 
 import System.Win32.File
@@ -17,6 +19,7 @@ import Foreign
 import Foreign.C
 
 import Data.Bits
+import Data.ByteString
 
 
 #include <windows.h>
@@ -56,6 +59,9 @@ readChanges pfni = do
 faToAction :: FileAction -> Action
 faToAction fa = toEnum $ fromEnum fa - 1
 
+osVersion :: IO OSVersion
+osVersion = alloca getOSVersion
+
 -------------------------------------------------------------------
 -- Low-level stuff that binds to notifications in the Win32 API
 
@@ -87,6 +93,20 @@ data FILE_NOTIFY_INFORMATION = FILE_NOTIFY_INFORMATION
     , fniFileName :: String
     }
 
+type OSMajorVersion = DWORD
+type OSMinorVersion = DWORD
+type OSVersion = (OSMajorVersion, OSMinorVersion)
+
+data OSVERSIONINFO = OSVERSIONINFO
+    { dwOSVersionInfoSize :: DWORD
+    , dwMajorVersion      :: OSMajorVersion
+    , dwMinorVersion      :: OSMinorVersion
+    , dwBuildNumber       :: DWORD
+    , dwPlatformId        :: DWORD
+    , szCSDVersion        :: ByteString
+    }
+
+
 -- instance Storable FILE_NOTIFY_INFORMATION where
 -- ... well, we can't write an instance since the struct is not of fix size,
 -- so we'll have to do it the hard way, and not get anything for free. Sigh.
@@ -104,10 +124,22 @@ peekFNI buf = do
                 fromEnum (fnle :: DWORD) `div` 2 ) -- fnle is the length in *bytes*, and a WCHAR is 2 bytes
     return $ FILE_NOTIFY_INFORMATION neof acti fnam
 
+peekOSVersion :: Ptr OSVERSIONINFO -> IO OSVersion
+peekOSVersion buf = do
+  major <- (#peek OSVERSIONINFO, MajorVersion) buf
+  minor <- (#peek OSVERSIONINFO, MinorVersion) buf
+  return $ (major, minor)
 
 readDirectoryChangesW :: Handle -> Ptr FILE_NOTIFY_INFORMATION -> DWORD -> BOOL -> FileNotificationFlag -> LPDWORD -> IO ()
 readDirectoryChangesW h buf bufSize wst f br =
   failIfFalse_ "ReadDirectoryChangesW" $ c_ReadDirectoryChangesW h (castPtr buf) bufSize wst f br nullPtr nullFunPtr
+
+getOSVersion :: Ptr OSVERSIONINFO -> IO OSVersion
+getOSVersion ovi = getVersionEx ovif >> peekOSVersion ovi
+
+getVersionEx :: LPOSVERSIONINFO -> IO ()
+getVersionEx ovi =
+  failIfFalse_ "GetVersionEx" $ c_GetVersionEx ovi
 
 {-
 asynchReadDirectoryChangesW :: Handle -> Ptr FILE_NOTIFY_INFORMATION -> DWORD -> BOOL -> FileNotificationFlag
@@ -123,11 +155,14 @@ cbReadDirectoryChanges
 -- The interruptible qualifier will keep threads listening for events from hanging blocking when killed
 #if __GLASGOW_HASKELL__ >= 701
 foreign import stdcall interruptible "windows.h ReadDirectoryChangesW"
+foreign import stdcall interruptible "windows.h GetVersionEx"
 #else
 foreign import stdcall safe "windows.h ReadDirectoryChangesW"
+foreign import stdcall safe "windows.h GetVersionEx"
 #endif
   c_ReadDirectoryChangesW :: Handle -> LPVOID -> DWORD -> BOOL -> DWORD
                                 -> LPDWORD -> LPOVERLAPPED -> LPOVERLAPPED_COMPLETION_ROUTINE -> IO BOOL
+  c_GeVersionEx :: LPOSVERSIONINFO -> IO BOOL
 
 {-
 type CompletionRoutine :: (DWORD, DWORD, LPOVERLAPPED) -> IO ()
