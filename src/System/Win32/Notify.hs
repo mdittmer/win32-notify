@@ -2,6 +2,7 @@ module System.Win32.Notify
   ( initWatchManager
   , killWatchManager
   , watchDirectory
+  , watch
   , Event(..)
   , EventVariety(..)
   , Handler
@@ -68,9 +69,11 @@ killWatchManager (WatchManager mvarMap) = do
   flip mapM_ (Map.keys watchMap) $ killThreads
   where
     killThreads :: WatchId -> IO ()
-    killThreads (WatchId tid1 tid2) = do
-      killThread tid1
-      killThread tid2
+    killThreads (WatchId tid1 tid2)
+      | tid1 == tid2 = killThread tid1
+      | otherwise    = do
+        killThread tid1
+        killThread tid2
 
 varietiesToFnFlags :: [EventVariety] -> FileNotificationFlag
 varietiesToFnFlags = foldl (.|.) 0 . map evToFnFlag'
@@ -108,6 +111,20 @@ watchDirectory (WatchManager mvarMap) dir watchSubTree varieties handler = do
     maybeHandle :: Handler
     maybeHandle event =
       if not (null ((eventToVarieties event) `intersect` varieties)) then handler event else return ()
+
+watch :: WatchManager -> FilePath -> Bool -> [EventVariety] -> IO (WatchId, Chan Event)
+watch (WatchManager mvarMap) dir watchSubTree varieties = do
+  watchHandle <- getWatchHandle dir
+  chanEvents <- newChan
+  tid <- forkIO $ osEventsReader watchHandle chanEvents
+  modifyMVar_ mvarMap $ \watchMap -> return (Map.insert (WatchId tid tid) (\_ -> return ()) watchMap)
+  return ((WatchId tid tid), chanEvents)
+  where
+    osEventsReader :: Handle -> Chan [Event] -> IO ()
+    osEventsReader watchHandle chanEvents = do
+      event <- (readDirectoryChanges watchHandle watchSubTree (varietiesToFnFlags varieties) >>= actsToEvent)
+      writeChan chanEvents [event]
+      osEventsReader watchHandle chanEvents
 
 eventToVarieties :: Event -> [EventVariety]
 eventToVarieties event = case event of
