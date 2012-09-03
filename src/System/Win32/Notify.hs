@@ -111,7 +111,7 @@ watchDirectory (WatchManager mvarMap) dir watchSubTree varieties handler = do
     maybeHandle event =
       if not (null ((eventToVarieties event) `intersect` varieties)) then handler event else return ()
 
-watch :: WatchManager -> FilePath -> Bool -> [EventVariety] -> IO (WatchId, Chan Event)
+watch :: WatchManager -> FilePath -> Bool -> [EventVariety] -> IO (WatchId, Chan [Event])
 watch (WatchManager mvarMap) dir watchSubTree varieties = do
   watchHandle <- getWatchHandle dir
   chanEvents <- newChan
