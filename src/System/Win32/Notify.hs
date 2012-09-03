@@ -56,7 +56,6 @@ data WatchId = WatchId ThreadId ThreadId deriving (Eq, Ord, Show)
 type WatchMap = Map WatchId Handler
 data WatchManager = WatchManager (MVar WatchMap)
 
-
 initWatchManager :: IO WatchManager
 initWatchManager =  do
   mvarMap <- newMVar Map.empty
