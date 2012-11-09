@@ -1,6 +1,5 @@
 module Main where
 
-import System.IO
 import System.Directory
 import System.Win32.Notify
 
@@ -11,7 +10,7 @@ main = do
   wd <- watchDirectory watchManager home isRecursive varieties handler
   print wd
   putStrLn "Listens to your home directory. Hit enter to terminate."
-  getLine -- TODO: This hangs... why is that?
+  _ <- getLine -- TODO: This hangs... why is that?
   killWatchManager watchManager
   putStrLn "Quitting."
   where
