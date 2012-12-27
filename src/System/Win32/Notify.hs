@@ -33,12 +33,16 @@ data Event
         { isDirectory :: Bool
         , maybeFilePath :: Maybe FilePath
         }
-    -- | A file was moved within the directory.
+    -- TODO: Problems with receiving (oldName, nil), (nil, newName) events at
+    -- unpredictable times mean that, for now, rename detection is disabled.
+    {-
+    -- A file was moved within the directory.
     | Renamed
         { isDirectory :: Bool
         , oldName     :: Maybe FilePath
-        , newName     :: FilePath
+        , newName     :: Maybe FilePath
         }
+    -}
     -- | A file was created. @Created isDirectory file@
     | Created
         { isDirectory :: Bool
@@ -130,7 +134,7 @@ eventToVarieties event = case event of
   Created  _ _   -> [Create]
   Deleted  _ _   -> [Delete]
   Modified _ _   -> [Modify]
-  Renamed  _ _ _ -> [Move]
+  -- Renamed  _ _ _ -> [Move]
 
 actsToEvent :: [(Action, String)] -> IO Event
 actsToEvent [] = error "The impossible happened - there was no event!"
@@ -140,7 +144,8 @@ actsToEvent [(act, fn)] = do
         FileModified    -> return $ Modified isDir (Just fn)
         FileAdded       -> return $ Created isDir fn
         FileRemoved     -> return $ Deleted isDir fn
-        FileRenamedOld  -> return $ Renamed isDir Nothing fn
-actsToEvent [(FileRenamedOld, fnold),(FileRenamedNew, fnnew)] = do
-    isDir <- doesDirectoryExist fnnew
-    return $ Renamed isDir (Just fnold) fnnew
+        FileRenamedOld  -> return $ Deleted isDir fn
+        FileRenamedNew  -> return $ Created isDir fn
+-- actsToEvent [(FileRenamedOld, fnold),(FileRenamedNew, fnnew)] = do
+--     isDir <- doesDirectoryExist fnnew
+--     return $ Renamed isDir (Just fnold) fnnew
