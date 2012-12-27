@@ -31,7 +31,7 @@ data Event
     -- | A file was modified. @Modified isDirectory file@
     = Modified
         { isDirectory :: Bool
-        , maybeFilePath :: Maybe FilePath
+        , filePath :: FilePath
         }
     -- TODO: Problems with receiving (oldName, nil), (nil, newName) events at
     -- unpredictable times mean that, for now, rename detection is disabled.
@@ -113,7 +113,7 @@ watchDirectory (WatchManager mvarMap) dir watchSubTree varieties handler = do
       osEventsReader watchHandle chanEvents
     maybeHandle :: Handler
     maybeHandle event =
-      if not (null ((eventToVarieties event) `intersect` varieties)) then handler event else return ()
+      if (==) (eventToVariety event) `any` varieties then handler event else return ()
 
 watch :: WatchManager -> FilePath -> Bool -> [EventVariety] -> IO (WatchId, Chan [Event])
 watch (WatchManager mvarMap) dir watchSubTree varieties = do
@@ -129,11 +129,11 @@ watch (WatchManager mvarMap) dir watchSubTree varieties = do
       writeChan chanEvents events
       osEventsReader watchHandle chanEvents
 
-eventToVarieties :: Event -> [EventVariety]
-eventToVarieties event = case event of
-  Created  _ _   -> [Create]
-  Deleted  _ _   -> [Delete]
-  Modified _ _   -> [Modify]
+eventToVariety :: Event -> EventVariety
+eventToVariety event = case event of
+  Created  _ _   -> Create
+  Deleted  _ _   -> Delete
+  Modified _ _   -> Modify
   -- Renamed  _ _ _ -> [Move]
 
 actsToEvents :: [(Action, String)] -> IO [Event]
@@ -142,11 +142,11 @@ actsToEvents = mapM actToEvent
     actToEvent (act, fn) = do
       isDir <- doesDirectoryExist fn
       case act of
-        FileModified    -> return $ Modified isDir (Just fn)
-        FileAdded       -> return $ Created isDir fn
-        FileRemoved     -> return $ Deleted isDir fn
-        FileRenamedOld  -> return $ Deleted isDir fn
-        FileRenamedNew  -> return $ Created isDir fn
+        FileModified    -> return $ Modified isDir fn
+        FileAdded       -> return $ Created  isDir fn
+        FileRemoved     -> return $ Deleted  isDir fn
+        FileRenamedOld  -> return $ Deleted  isDir fn
+        FileRenamedNew  -> return $ Created  isDir fn
 -- actsToEvent [(FileRenamedOld, fnold),(FileRenamedNew, fnnew)] = do
 --     isDir <- doesDirectoryExist fnnew
 --     return $ Renamed isDir (Just fnold) fnnew
