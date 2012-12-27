@@ -108,8 +108,8 @@ watchDirectory (WatchManager mvarMap) dir watchSubTree varieties handler = do
       dispatcher chanEvents
     osEventsReader :: Handle -> Chan [Event] -> IO ()
     osEventsReader watchHandle chanEvents = do
-      event <- (readDirectoryChanges watchHandle watchSubTree (varietiesToFnFlags varieties) >>= actsToEvent)
-      writeChan chanEvents [event]
+      events <- (readDirectoryChanges watchHandle watchSubTree (varietiesToFnFlags varieties) >>= actsToEvents)
+      writeChan chanEvents events
       osEventsReader watchHandle chanEvents
     maybeHandle :: Handler
     maybeHandle event =
@@ -125,8 +125,8 @@ watch (WatchManager mvarMap) dir watchSubTree varieties = do
   where
     osEventsReader :: Handle -> Chan [Event] -> IO ()
     osEventsReader watchHandle chanEvents = do
-      event <- (readDirectoryChanges watchHandle watchSubTree (varietiesToFnFlags varieties) >>= actsToEvent)
-      writeChan chanEvents [event]
+      events <- (readDirectoryChanges watchHandle watchSubTree (varietiesToFnFlags varieties) >>= actsToEvents)
+      writeChan chanEvents events
       osEventsReader watchHandle chanEvents
 
 eventToVarieties :: Event -> [EventVariety]
@@ -136,11 +136,12 @@ eventToVarieties event = case event of
   Modified _ _   -> [Modify]
   -- Renamed  _ _ _ -> [Move]
 
-actsToEvent :: [(Action, String)] -> IO Event
-actsToEvent [] = error "The impossible happened - there was no event!"
-actsToEvent [(act, fn)] = do
-    isDir <- doesDirectoryExist fn
-    case act of
+actsToEvents :: [(Action, String)] -> IO [Event]
+actsToEvents = mapM actToEvent
+  where
+    actToEvent (act, fn) = do
+      isDir <- doesDirectoryExist fn
+      case act of
         FileModified    -> return $ Modified isDir (Just fn)
         FileAdded       -> return $ Created isDir fn
         FileRemoved     -> return $ Deleted isDir fn
