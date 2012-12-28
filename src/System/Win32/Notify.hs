@@ -127,7 +127,7 @@ watch (WatchManager mvarMap) dir watchSubTree varieties = do
 killWatch :: WatchId -> IO ()
 killWatch (WatchId tid1 tid2 handle) = do
     killThread tid1
-    if tid1 != tid2 then killThread tid2 else void
+    if tid1 /= tid2 then killThread tid2 else void
     closeHandle handle
 
 eventToVariety :: Event -> EventVariety
