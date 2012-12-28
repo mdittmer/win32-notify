@@ -1,13 +1,14 @@
 module System.Win32.Notify
-  ( initWatchManager
-  , killWatchManager
-  , watchDirectory
-  , watch
-  , Event(..)
+  ( Event(..)
   , EventVariety(..)
   , Handler
   , WatchId(..)
   , WatchManager(..)
+  , initWatchManager
+  , killWatch
+  , killWatchManager
+  , watch
+  , watchDirectory
     ) where
 
 import Control.Concurrent
@@ -16,6 +17,7 @@ import Data.Bits
 import Data.List (intersect)
 import Data.Map (Map)
 import System.Directory
+import System.Win32 (closeHandle)
 import System.Win32.File
 import System.Win32.FileNotify
 import qualified Data.Map as Map
@@ -57,7 +59,7 @@ data Event
 
 type Handler = Event -> IO ()
 
-data WatchId = WatchId ThreadId ThreadId deriving (Eq, Ord, Show)
+data WatchId = WatchId ThreadId ThreadId Handle deriving (Eq, Ord, Show)
 type WatchMap = Map WatchId Handler
 data WatchManager = WatchManager (MVar WatchMap)
 
@@ -69,14 +71,7 @@ initWatchManager =  do
 killWatchManager :: WatchManager -> IO ()
 killWatchManager (WatchManager mvarMap) = do
   watchMap <- readMVar mvarMap
-  flip mapM_ (Map.keys watchMap) $ killThreads
-  where
-    killThreads :: WatchId -> IO ()
-    killThreads (WatchId tid1 tid2)
-      | tid1 == tid2 = killThread tid1
-      | otherwise    = do
-        killThread tid1
-        killThread tid2
+  flip mapM_ (Map.keys watchMap) $ killWatch
 
 varietiesToFnFlags :: [EventVariety] -> FileNotificationFlag
 varietiesToFnFlags = foldl (.|.) 0 . map evToFnFlag'
@@ -98,7 +93,7 @@ watchDirectory (WatchManager mvarMap) dir watchSubTree varieties handler = do
   chanEvents <- newChan
   tid1 <- forkIO $ dispatcher chanEvents
   tid2 <- forkIO $ osEventsReader watchHandle chanEvents
-  modifyMVar_ mvarMap $ \watchMap -> return (Map.insert (WatchId tid1 tid2) handler watchMap)
+  modifyMVar_ mvarMap $ \watchMap -> return (Map.insert (WatchId tid1 tid2 watchHandle) handler watchMap)
   return (WatchId tid1 tid2)
   where
     dispatcher :: Chan [Event] -> IO ()
@@ -120,7 +115,7 @@ watch (WatchManager mvarMap) dir watchSubTree varieties = do
   watchHandle <- getWatchHandle dir
   chanEvents <- newChan
   tid <- forkIO $ osEventsReader watchHandle chanEvents
-  modifyMVar_ mvarMap $ \watchMap -> return (Map.insert (WatchId tid tid) (\_ -> return ()) watchMap)
+  modifyMVar_ mvarMap $ \watchMap -> return (Map.insert (WatchId tid tid watchHandle) (\_ -> return ()) watchMap)
   return ((WatchId tid tid), chanEvents)
   where
     osEventsReader :: Handle -> Chan [Event] -> IO ()
@@ -128,6 +123,12 @@ watch (WatchManager mvarMap) dir watchSubTree varieties = do
       events <- (readDirectoryChanges watchHandle watchSubTree (varietiesToFnFlags varieties) >>= actsToEvents)
       writeChan chanEvents events
       osEventsReader watchHandle chanEvents
+
+killWatch :: WatchId -> IO ()
+killWatch (WatchId tid1 tid2 handle) = do
+    killThread tid1
+    if tid1 != tid2 then killThread tid2 else void
+    closeHandle handle
 
 eventToVariety :: Event -> EventVariety
 eventToVariety event = case event of

@@ -12,7 +12,7 @@ build-type:     Simple
 cabal-version:  >= 1.8
 
 library
-  build-depends:   base, Win32, directory, containers >= 0.4.0.0
+  build-depends:   base >= 4.3.1.0 && < 5, Win32, directory, containers >= 0.4.0.0
   ghc-options:     -Wall -fno-warn-incomplete-patterns -fno-warn-unused-imports -threaded
   exposed-modules: System.Win32.Notify
   other-modules:   System.Win32.FileNotify
@@ -20,5 +20,5 @@ library
 
 executable simple
   main-is:       examples/simple/simple.hs
-  build-depends: base, directory, Win32-notify >= 0.1
+  build-depends: base >= 4.3.1.0 && < 5, directory, Win32-notify >= 0.1
   ghc-options:   -Wall -threaded
