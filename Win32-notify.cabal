@@ -4,7 +4,7 @@ license:        BSD3
 license-file:   LICENSE
 author:         Niklas Broberg
 copyright:      Niklas Broberg, 2008; Mark Dittmer, 2012
-maintainer:     Mark Dittmer <mark.s.dittmer@gmail.com>
+maintainer:     Pepe Iborra <pepeiborra@gmail.com>
 category:       System
 synopsis:       A binding to part of the Win32 library for file notification
 description:    A binding to part of the Win32 library for file notification
