@@ -1,5 +1,5 @@
 name:           Win32-notify
-version:        0.3
+version:        0.3.0.1
 license:        BSD3
 license-file:   LICENSE
 author:         Niklas Broberg
@@ -19,6 +19,7 @@ library
   hs-source-dirs:  src
 
 executable simple
+  Buildable: False
   main-is:       examples/simple/simple.hs
   build-depends: base >= 4.3.1.0 && < 5, directory, Win32-notify >= 0.1
   ghc-options:   -Wall -threaded

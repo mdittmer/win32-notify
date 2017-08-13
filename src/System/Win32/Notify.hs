@@ -63,6 +63,9 @@ data WatchId = WatchId ThreadId ThreadId Handle deriving (Eq, Ord, Show)
 type WatchMap = Map WatchId Handler
 data WatchManager = WatchManager (MVar WatchMap)
 
+void :: IO ()
+void = return ()
+
 initWatchManager :: IO WatchManager
 initWatchManager =  do
   mvarMap <- newMVar Map.empty
@@ -94,7 +97,7 @@ watchDirectory (WatchManager mvarMap) dir watchSubTree varieties handler = do
   tid1 <- forkIO $ dispatcher chanEvents
   tid2 <- forkIO $ osEventsReader watchHandle chanEvents
   modifyMVar_ mvarMap $ \watchMap -> return (Map.insert (WatchId tid1 tid2 watchHandle) handler watchMap)
-  return (WatchId tid1 tid2)
+  return (WatchId tid1 tid2 watchHandle)
   where
     dispatcher :: Chan [Event] -> IO ()
     dispatcher chanEvents = do
@@ -108,15 +111,15 @@ watchDirectory (WatchManager mvarMap) dir watchSubTree varieties handler = do
       osEventsReader watchHandle chanEvents
     maybeHandle :: Handler
     maybeHandle event =
-      if (==) (eventToVariety event) `any` varieties then handler event else return ()
+      if (==) (eventToVariety event) `any` varieties then handler event else void
 
 watch :: WatchManager -> FilePath -> Bool -> [EventVariety] -> IO (WatchId, Chan [Event])
 watch (WatchManager mvarMap) dir watchSubTree varieties = do
   watchHandle <- getWatchHandle dir
   chanEvents <- newChan
   tid <- forkIO $ osEventsReader watchHandle chanEvents
-  modifyMVar_ mvarMap $ \watchMap -> return (Map.insert (WatchId tid tid watchHandle) (\_ -> return ()) watchMap)
-  return ((WatchId tid tid), chanEvents)
+  modifyMVar_ mvarMap $ \watchMap -> return (Map.insert (WatchId tid tid watchHandle) (\_ -> void) watchMap)
+  return ((WatchId tid tid watchHandle), chanEvents)
   where
     osEventsReader :: Handle -> Chan [Event] -> IO ()
     osEventsReader watchHandle chanEvents = do
